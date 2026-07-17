@@ -129,7 +129,7 @@ class TaxBillingApp:
     def __init__(self, root):
         self.root = root
         self.root.title("會計報稅請款整合系統 v6.1")
-        self.root.geometry("1600x880")
+        self.root.geometry("1350x700")
         
         self.db = DatabaseManager()
         self.config = self.load_config()
@@ -212,25 +212,25 @@ class TaxBillingApp:
             tree = ttk.Treeview(tab, columns=cols, show='tree headings')
             
             tree.heading('#0', text='公司編號')
-            tree.column('#0', width=70, anchor='center')
+            tree.column('#0', width=45, anchor='center')
             tree.heading('billed_status', text='請款')
-            tree.column('billed_status', width=45, anchor='center')
-            tree.heading('status', text='付款')
-            tree.column('status', width=45, anchor='center')
+            tree.column('billed_status', width=35, anchor='center')
+            tree.heading('status', text='收款')
+            tree.column('status', width=35, anchor='center')
             tree.heading('name', text='公司名稱')
-            tree.column('name', width=130, anchor='w')
+            tree.column('name', width=120, anchor='w')
             tree.heading('bank_account', text='對方銀行帳戶')
             tree.column('bank_account', width=150, anchor='w')
-            tree.heading('tax_amt', text='營業稅(OCR)')
-            tree.column('tax_amt', width=85, anchor='e')
+            tree.heading('tax_amt', text='營業稅')
+            tree.column('tax_amt', width=60, anchor='e')
             tree.heading('accounting_fee', text='記帳費')
-            tree.column('accounting_fee', width=75, anchor='e')
+            tree.column('accounting_fee', width=60, anchor='e')
             tree.heading('special_fee', text='特別項目')
-            tree.column('special_fee', width=75, anchor='e')
-            tree.heading('total_amt', text='最終總金額')
-            tree.column('total_amt', width=90, anchor='e')
+            tree.column('special_fee', width=60, anchor='e')
+            tree.heading('total_amt', text='總金額')
+            tree.column('total_amt', width=70, anchor='e')
             tree.heading('note', text='備註')
-            tree.column('note', width=100, anchor='w')
+            tree.column('note', width=60, anchor='w')
             tree.column('id', width=0, stretch=tk.NO)
             
             tree.bind('<ButtonRelease-1>', self.on_tree_select)
@@ -249,7 +249,7 @@ class TaxBillingApp:
         self.entry_name = tk.Entry(self.billing_canvas, font=("標楷體", 13), width=24, state="readonly")
         self.entry_name.grid(row=1, column=1, sticky="w", pady=4)
         
-        tk.Label(self.billing_canvas, text="1. 營業稅(OCR)：", font=("標楷體", 13), bg="white").grid(row=2, column=0, sticky="e", pady=4)
+        tk.Label(self.billing_canvas, text="1. 營業稅：", font=("標楷體", 13), bg="white").grid(row=2, column=0, sticky="e", pady=4)
         self.entry_tax = tk.Entry(self.billing_canvas, font=("標楷體", 13), width=24)
         self.entry_tax.grid(row=2, column=1, sticky="w", pady=4)
         self.entry_tax.bind("<KeyRelease>", lambda e: self.update_live_total())
@@ -287,7 +287,7 @@ class TaxBillingApp:
         tk.Button(sp_ctrl, text="❌ 刪除", font=("微軟正黑體", 9), bg="#FFCDD2", command=self.delete_special_item_click).pack(fill=tk.X, pady=1)
 
         # 最終總和即時回顯
-        self.lbl_total_amount = tk.Label(self.billing_canvas, text="最終總款項：0.0 元", font=("標楷體", 13, "bold"), fg="blue", bg="white")
+        self.lbl_total_amount = tk.Label(self.billing_canvas, text="最終總款項：0 元", font=("標楷體", 13, "bold"), fg="blue", bg="white")
         self.lbl_total_amount.grid(row=6, column=0, columnspan=2, pady=5)
 
         btn_frame = tk.Frame(self.billing_canvas, bg="white")
@@ -460,24 +460,31 @@ class TaxBillingApp:
         file_path = filedialog.askopenfilename(title="選擇對照表檔案", filetypes=[("Excel/CSV files", "*.xlsx *.xls *.csv")])
         if not file_path: return
         try:
-            df = pd.read_csv(file_path) if file_path.endswith('.csv') else pd.read_excel(file_path)
+            # 【精進優化】強制指定 dtype=str，確保所有欄位都以純文字讀取，避免開頭的 0 被自動轉成數字而吃掉
+            df = pd.read_csv(file_path, dtype=str) if file_path.endswith('.csv') else pd.read_excel(file_path, dtype=str)
             count_new = 0
             count_update = 0
             
             print("\n開始解析對照表五欄位數據...")
             for index, row in df.iterrows():
                 if len(row) < 5: continue
-                code = str(row.iloc[0]).strip()
-                name = str(row.iloc[1]).strip()
-                tax_id = str(row.iloc[2]).strip()
+                code = str(row.iloc[0]).strip() if not pd.isna(row.iloc[0]) else ""
+                name = str(row.iloc[1]).strip() if not pd.isna(row.iloc[1]) else ""
+                tax_id = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
                 fee = row.iloc[3]
-                bank_acc = str(row.iloc[4]).strip()
+                bank_acc = str(row.iloc[4]).strip() if not pd.isna(row.iloc[4]) else ""
                 
-                if pd.isna(row.iloc[0]) or code == 'nan' or not code: continue
-                try: fee = float(fee) if not pd.isna(fee) else 0.0
-                except: fee = 0.0
+                if not code or code == 'nan' or code == "": continue
+                if name == 'nan': name = ""
                 if tax_id == 'nan': tax_id = ""
                 if bank_acc == 'nan': bank_acc = ""
+                
+                try: fee = float(fee) if not pd.isna(fee) and str(fee) != 'nan' else 0.0
+                except: fee = 0.0
+                
+                # 【精進優化】台灣統一編號固定為 8 位數，若外部來源 Excel 檔案已被啃掉 0，在此進行防呆補零
+                if tax_id and tax_id.isdigit() and len(tax_id) < 8:
+                    tax_id = tax_id.zfill(8)
                 
                 # 檢查同編號且啟用中的公司
                 self.db.cursor.execute("SELECT id FROM companies WHERE company_code = ? AND is_active = 1", (code,))
@@ -617,10 +624,12 @@ class TaxBillingApp:
         self.entry_name.config(state="readonly")
         
         self.entry_tax.delete(0, tk.END)
-        self.entry_tax.insert(0, str(tax))
+        # 精進點：去除小數點 .0。但注意「不要加上千分位逗號」，以防未來 float() 轉型報錯
+        self.entry_tax.insert(0, str(int(round(tax))) if tax is not None else "0")
         
         self.entry_accounting_fee.delete(0, tk.END)
-        self.entry_accounting_fee.insert(0, str(fee))
+        # 精進點：去除小數點 .0。同樣不加逗號
+        self.entry_accounting_fee.insert(0, str(int(round(fee))) if fee is not None else "0")
         
         self.entry_note.delete(0, tk.END)
         self.entry_note.insert(0, note if note else "")
@@ -648,7 +657,8 @@ class TaxBillingApp:
         if not self.selected_record_id: return
         self.db.cursor.execute("SELECT item_name, item_amount, id FROM billing_special_items WHERE billing_record_id = ?", (self.selected_record_id,))
         for n, a, sid in self.db.cursor.fetchall():
-            self.special_items_tree.insert('', tk.END, values=(n, a, sid))
+            # 精進點：特別繳款項目金額也去除小數點
+            self.special_items_tree.insert('', tk.END, values=(n, int(round(a)) if a is not None else 0, sid))
 
     def update_live_total(self):
         try: tax = float(self.entry_tax.get().strip())
@@ -663,7 +673,8 @@ class TaxBillingApp:
             except: pass
         
         final_total = tax + fee + sp_sum
-        self.lbl_total_amount.config(text=f"最終總款項：{final_total:.1f} 元 (營業稅:{tax:.0f} + 記帳:{fee:.0f} + 特別項目:{sp_sum:.0f})")
+        # 精進點：最終即時回顯總金額完全「去小數點 + 格式化為千分位 comma 逗號」顯示，體驗完美
+        self.lbl_total_amount.config(text=f"最終總款項：{int(round(final_total)):,} 元 (營業稅:{int(round(tax)):,} + 記帳:{int(round(fee)):,} + 特別項目:{int(round(sp_sum)):,})")
 
     def add_special_item_click(self):
         if not self.selected_record_id: return
@@ -833,6 +844,10 @@ class TaxBillingApp:
             if not full_name: return
             try: fee = float(fee_str)
             except: fee = 0.0
+            
+            # 【精進優化】手動介面建檔或修改時，也自動實施 8 位數統編防呆補零
+            if tax_id and tax_id.isdigit() and len(tax_id) < 8:
+                tax_id = tax_id.zfill(8)
                 
             if getattr(self, 'selected_company_id', None):
                 if code:
@@ -919,12 +934,14 @@ class TaxBillingApp:
         # 啟用中公司依編號由小到大排序
         self.db.cursor.execute('SELECT company_code, full_name, short_name, tax_id, base_accounting_fee, bank_account, id FROM companies WHERE is_active=1 ORDER BY company_code ASC')
         for code, f, s, t, fee, b, cid in self.db.cursor.fetchall():
-            self.active_company_tree.insert('', tk.END, text=code, values=(code, f, s, t, fee, b, cid))
+            # 精進點：月記帳費去除小數點 .0，且不含逗號避免未來點選讀取回編輯框時發生 float() 轉型錯誤
+            self.active_company_tree.insert('', tk.END, text=code, values=(code, f, s, t, int(round(fee)) if fee else 0, b, cid))
             
         # 停用公司依完整名稱排序
         self.db.cursor.execute('SELECT full_name, short_name, tax_id, base_accounting_fee, bank_account, id FROM companies WHERE is_active=0 ORDER BY full_name ASC')
         for f, s, t, fee, b, cid in self.db.cursor.fetchall():
-            self.inactive_company_tree.insert('', tk.END, values=("", f, s, t, fee, b, cid))
+            # 精進點：月記帳費去除小數點 .0
+            self.inactive_company_tree.insert('', tk.END, values=("", f, s, t, int(round(fee)) if fee else 0, b, cid))
 
     def refresh_treeview(self, month):
         year = self.year_var.get()
@@ -950,8 +967,18 @@ class TaxBillingApp:
             sp_res = self.db.cursor.fetchone()
             sp_sum = sp_res[0] if sp_res[0] else 0.0
             
-            total_amt = tax + fee + sp_sum
-            tree.insert('', tk.END, text=code, values=(billed_icon, paid_icon, name, bank if bank else "", tax, fee, sp_sum, total_amt, note if note else "", rid))
+            # 確保運算變數安全非空
+            tax_val = tax if tax is not None else 0.0
+            fee_val = fee if fee is not None else 0.0
+            total_amt = tax_val + fee_val + sp_sum
+            
+            # 精進點：金額全部轉換為無小數點整數，且格式化為帶有千分位逗號的字串 (僅用於 Treeview 顯示)
+            tax_str = f"{int(round(tax_val)):,}"
+            fee_str = f"{int(round(fee_val)):,}"
+            sp_sum_str = f"{int(round(sp_sum)):,}"
+            total_amt_str = f"{int(round(total_amt)):,}"
+            
+            tree.insert('', tk.END, text=code, values=(billed_icon, paid_icon, name, bank if bank else "", tax_str, fee_str, sp_sum_str, total_amt_str, note if note else "", rid))
 
    # ================= 產生請款單並開啟 Excel =================
     def generate_billing_excel(self):
@@ -1006,6 +1033,10 @@ class TaxBillingApp:
             # 2. 載入 Excel 範本並寫入資料 (保留格式)
             wb = openpyxl.load_workbook(template_file)
             ws = wb.active # 預設操作第一個分頁
+            
+            # 辨識當營業稅金額是0的時候，填入"留抵"
+            if tax_amt == 0.0:
+                tax_amt = "留抵"
 
             # 寫入固定欄位
             ws['B2'].value = company_name
